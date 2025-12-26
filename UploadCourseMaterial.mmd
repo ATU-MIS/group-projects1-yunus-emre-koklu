@@ -1,0 +1,90 @@
+sequenceDiagram
+autonumber
+actor Instructor as Instructor
+participant System as LMS System
+participant VS as Virus Scan Service
+participant FS as File Storage Service
+participant DB as Database
+participant NS as Notification Service
+
+Instructor->>System: Open "My Courses"
+System->>DB: Get courses for Instructor
+alt No assigned courses
+  DB-->>System: Empty
+  System-->>Instructor: "No assigned courses. Contact admin."
+else Courses exist
+  DB-->>System: Course list
+  System-->>Instructor: Display course list
+
+  Instructor->>System: Select course
+  System->>DB: Get materials for course
+  DB-->>System: Material list
+  System-->>Instructor: Show material list page
+
+  Instructor->>System: Click "Upload New Material"
+  System-->>Instructor: Show upload form (file + description)
+
+  Instructor->>System: Choose file
+  Instructor->>System: Enter description (optional)
+  Instructor->>System: Click "Upload"
+
+  System->>System: Validate file (type, size, name)
+  alt Unsupported type
+    System-->>Instructor: "Unsupported type (PDF/DOCX/PPTX/XLSX/ZIP)"
+    System-->>Instructor: Back to upload form
+  else File too large
+    System-->>Instructor: "File too large (max 100MB)"
+    System-->>Instructor: Back to upload form
+  else Duplicate name
+    System-->>Instructor: Ask choice: Overwrite / New version / Cancel
+    alt Cancel
+      System-->>Instructor: Back to upload form
+    else Overwrite or New version
+      System->>VS: Scan file
+      alt Virus detected
+        VS-->>System: Flagged
+        System-->>Instructor: "Upload blocked: failed virus scan"
+      else Clean
+        VS-->>System: Clean
+        System->>FS: Upload to storage
+        alt Storage failure
+          FS-->>System: Error
+          System->>DB: Ensure no metadata saved (rollback)
+          System-->>Instructor: "Server error. Try again later."
+        else Uploaded
+          FS-->>System: Path/URL returned
+          System->>DB: Save metadata (name, desc, ts, ids, path, type)
+          DB-->>System: Saved
+          System-->>Instructor: Refresh list + "Upload successful"
+          opt Notifications enabled
+            System->>NS: Notify enrolled students
+            NS-->>System: Sent/Queued
+          end
+        end
+      end
+    end
+  else Valid (no duplicate)
+    System->>VS: Scan file
+    alt Virus detected
+      VS-->>System: Flagged
+      System-->>Instructor: "Upload blocked: failed virus scan"
+    else Clean
+      VS-->>System: Clean
+      System->>FS: Upload to storage
+      alt Storage failure
+        FS-->>System: Error
+        System->>DB: Ensure no metadata saved (rollback)
+        System-->>Instructor: "Server error. Try again later."
+      else Uploaded
+        FS-->>System: Path/URL returned
+        System->>DB: Save metadata
+        DB-->>System: Saved
+        System-->>Instructor: Refresh list + "Upload successful"
+        opt Notifications enabled
+          System->>NS: Notify enrolled students
+          NS-->>System: Sent/Queued
+        end
+      end
+    end
+  end
+end
